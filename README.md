@@ -5,6 +5,8 @@
 - Environment variables `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` is set
 - Terraform variables `ssh_ingress_cidr` for SSH IP whitelist, `key_pair_name` for SSH key pair and `resource_prefix` for resource prefix name
 
+![workspace_variables](./docs/workspace-variables.png)
+
 ## Apply terraform
 
 ```
