@@ -29,15 +29,13 @@ provider "aws" {
 }
 
 # Data source for latest Amazon Linux 2 AMI
-data "aws_ami" "amazon_linux_2" {
+data "aws_ami" "amazon_linux_2023" {
   most_recent = true
   owners      = ["amazon"]
-
   filter {
     name   = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+    values = ["al2023-ami-*-x86_64"]
   }
-
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
@@ -159,7 +157,7 @@ resource "aws_iam_instance_profile" "ec2_s3_profile" {
 }
 
 resource "aws_instance" "vm" {
-  ami                  = data.aws_ami.amazon_linux_2.id
+  ami                  = data.aws_ami.amazon_linux_2023.id
   instance_type        = var.instance_type
   key_name             = data.aws_key_pair.existing.key_name
   iam_instance_profile = aws_iam_instance_profile.ec2_s3_profile.name
