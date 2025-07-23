@@ -3,6 +3,12 @@ variable "ssh_ingress_cidr" {
   type        = string
 }
 
+variable "create_s3" {
+  description = "Whether to create S3 bucket and related IAM resources"
+  type        = bool
+  default     = false
+}
+
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
@@ -18,23 +24,25 @@ variable "root_volume_size" {
 variable "key_pair_name" {
   description = "Name of the AWS key pair to use"
   type        = string
+  default     = "gerard-key"
 }
 
 variable "resource_prefix" {
   description = "Value to prefix resources with"
   type        = string
+  default     = "gerard"
 }
 
 provider "aws" {
 }
 
-# Data source for latest Amazon Linux 2 AMI
-data "aws_ami" "amazon_linux_2023" {
+# Data source for RHEL 9.6 AMI
+data "aws_ami" "rhel" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["309956199498"] # Red Hat
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["RHEL-9.6*-x86_64-*"]
   }
   filter {
     name   = "virtualization-type"
@@ -66,6 +74,14 @@ resource "aws_security_group" "allow_ssh" {
     cidr_blocks = [var.ssh_ingress_cidr]
   }
 
+  ingress {
+    description = "Application port 30000"
+    from_port   = 30000
+    to_port     = 30000
+    protocol    = "tcp"
+    cidr_blocks = [var.ssh_ingress_cidr]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -79,11 +95,13 @@ resource "aws_security_group" "allow_ssh" {
 }
 
 resource "aws_s3_bucket" "kots" {
+  count         = var.create_s3 ? 1 : 0
   bucket        = "${var.resource_prefix}-kots"
   force_destroy = true
 }
 
 resource "aws_iam_policy" "ec2_s3_policy" {
+  count       = var.create_s3 ? 1 : 0
   name        = "EC2S3Policy"
   path        = "/"
   description = "IAM policy for EC2 and S3 access"
@@ -113,7 +131,7 @@ resource "aws_iam_policy" "ec2_s3_policy" {
           "s3:ListMultipartUploadParts"
         ]
         Resource = [
-          "${aws_s3_bucket.kots.arn}/*"
+          "${aws_s3_bucket.kots[0].arn}/*"
         ]
       },
       {
@@ -122,7 +140,7 @@ resource "aws_iam_policy" "ec2_s3_policy" {
           "s3:ListBucket"
         ]
         Resource = [
-          aws_s3_bucket.kots.arn
+          aws_s3_bucket.kots[0].arn
         ]
       }
     ]
@@ -130,6 +148,7 @@ resource "aws_iam_policy" "ec2_s3_policy" {
 }
 
 resource "aws_iam_role" "ec2_s3_access_role" {
+  count = var.create_s3 ? 1 : 0
   name = "EC2S3AccessRole"
 
   assume_role_policy = jsonencode({
@@ -147,20 +166,22 @@ resource "aws_iam_role" "ec2_s3_access_role" {
 }
 
 resource "aws_iam_role_policy_attachment" "s3_policy_attach" {
-  policy_arn = aws_iam_policy.ec2_s3_policy.arn
-  role       = aws_iam_role.ec2_s3_access_role.name
+  count      = var.create_s3 ? 1 : 0
+  policy_arn = aws_iam_policy.ec2_s3_policy[0].arn
+  role       = aws_iam_role.ec2_s3_access_role[0].name
 }
 
 resource "aws_iam_instance_profile" "ec2_s3_profile" {
+  count = var.create_s3 ? 1 : 0
   name = "EC2S3Profile"
-  role = aws_iam_role.ec2_s3_access_role.name
+  role = aws_iam_role.ec2_s3_access_role[0].name
 }
 
 resource "aws_instance" "vm" {
-  ami                  = data.aws_ami.amazon_linux_2023.id
+  ami                  = data.aws_ami.rhel.id
   instance_type        = var.instance_type
   key_name             = data.aws_key_pair.existing.key_name
-  iam_instance_profile = aws_iam_instance_profile.ec2_s3_profile.name
+  iam_instance_profile = var.create_s3 ? aws_iam_instance_profile.ec2_s3_profile[0].name : null
 
   root_block_device {
     volume_size = var.root_volume_size
@@ -176,7 +197,7 @@ resource "aws_instance" "vm" {
 
 output "kots_app" {
   description = "KOTS admin console"
-  value       = "http://${aws_instance.vm.public_ip}:8800"
+  value       = "http://${aws_instance.vm.public_ip}:30000"
 }
 
 # Output for SSH access
